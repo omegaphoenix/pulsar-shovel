@@ -1,0 +1,15 @@
+[srcPulsar]
+hostname = ""
+port = 6651
+tenant = ""
+namespace = ""
+topic = ""
+token = ""
+
+[destPulsar]
+hostname = ""
+port = 6651
+tenant = ""
+namespace = ""
+topic = ""
+token = ""
