@@ -12,7 +12,8 @@ serde_yaml = "0.8.17"
 toml = "0.5.8"
 thiserror = "1.0.26"
 futures = "0.3"
-pulsar = "4.0"
+# pulsar = "4.0"
+pulsar = { git = "ssh://git@github.com/streamnative/pulsar-rs", branch = "master" }
 tokio = { version="1.19", features = ["full"] }
 env_logger = "0.9.0"
 log = "0.4.14"
