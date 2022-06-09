@@ -1,5 +1,4 @@
 mod config;
-use futures::StreamExt;
 use pulsar::{
     consumer::{ConsumerOptions, InitialPosition},
     proto::MessageIdData,
@@ -8,7 +7,6 @@ use pulsar::{
 };
 use serde::Deserialize;
 use std::time::Duration;
-use tokio::sync::mpsc::channel;
 
 pub async fn delay_ms(ms: usize) {
     tokio::time::sleep(Duration::from_millis(ms as u64)).await;
@@ -78,7 +76,6 @@ async fn main() {
         src_pulsar,
         dest_pulsar,
     } = config::load().expect("Unable to load config");
-    let (tx, _rx) = channel(BUFFER_SIZE);
     tokio::spawn(async move {
         let namespace = src_pulsar.namespace.clone();
         let topic = src_pulsar.topic.clone();
