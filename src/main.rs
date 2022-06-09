@@ -189,6 +189,6 @@ async fn main() {
         dest_pulsar,
     } = config::load().expect("Unable to load config");
     let (tx, rx) = channel(BUFFER_SIZE);
-    tokio::spawn(async move { write_topic(dest_pulsar, rx).await });
-    read_topic(src_pulsar, tx).await;
+    write_topic(dest_pulsar, rx).await;
+    tokio::spawn(async move { read_topic(src_pulsar, tx).await });
 }
