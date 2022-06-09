@@ -91,12 +91,12 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
         {
             Ok(r) => r,
             Err(e) => {
-                delay_ms(RECONNECT_DELAY).await;
                 log::error!(
                     "Failed to create reader on {} with error {}. Retrying...",
                     &full_topic_name,
                     e
                 );
+                delay_ms(RECONNECT_DELAY).await;
                 continue;
             }
         }
@@ -189,6 +189,6 @@ async fn main() {
         dest_pulsar,
     } = config::load().expect("Unable to load config");
     let (tx, rx) = channel(BUFFER_SIZE);
-    tokio::spawn(async move { read_topic(src_pulsar, tx).await });
-    write_topic(dest_pulsar, rx).await;
+    tokio::spawn(async move { write_topic(dest_pulsar, rx).await });
+    read_topic(src_pulsar, tx).await;
 }
