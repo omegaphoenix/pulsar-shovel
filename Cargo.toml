@@ -12,7 +12,7 @@ serde_yaml = "0.8.17"
 toml = "0.5.8"
 thiserror = "1.0.26"
 futures = "0.3"
-pulsar = "4.0"
+pulsar_rs = { package = "sn-pulsar", git = "https://github.com/omegaphoenix/pulsar-rs.git", branch = "hotfix/v4.1.2-add-uncompressed-size", features = ["compression"] }
 tokio = { version="1.19", features = ["full"] }
 env_logger = "0.9.0"
 log = "0.4.14"

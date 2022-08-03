@@ -1,4 +1,4 @@
-[srcPulsar]
+[src_pulsar]
 hostname = ""
 port = 6651
 tenant = ""
@@ -6,7 +6,7 @@ namespace = ""
 topic = ""
 token = ""
 
-[destPulsar]
+[dest_pulsar]
 hostname = ""
 port = 6651
 tenant = ""
