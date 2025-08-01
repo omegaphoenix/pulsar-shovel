@@ -1,7 +1,7 @@
 mod config;
 use futures::FutureExt;
 use futures::StreamExt;
-use pulsar_rs::{
+use pulsar::{
     authentication::oauth2::{OAuth2Authentication, OAuth2Params},
     consumer::{ConsumerOptions, InitialPosition},
     producer::ProducerOptions,
@@ -43,9 +43,7 @@ pub struct PulsarConfig {
     pub oauth: Option<OAuth>,
 }
 
-async fn get_pulsar_client(
-    config: PulsarConfig,
-) -> Result<Pulsar<TokioExecutor>, pulsar_rs::Error> {
+async fn get_pulsar_client(config: PulsarConfig) -> Result<Pulsar<TokioExecutor>, pulsar::Error> {
     let addr = format!("pulsar+ssl://{}:{}", config.hostname, config.port);
     let mut builder = Pulsar::builder(addr, TokioExecutor);
 
@@ -76,7 +74,7 @@ async fn get_pulsar_reader(
     pulsar: Pulsar<TokioExecutor>,
     full_topic_name: &str,
     initial_position: Option<MessageIdData>,
-) -> Result<Reader<Vec<u8>, TokioExecutor>, pulsar_rs::Error> {
+) -> Result<Reader<Vec<u8>, TokioExecutor>, pulsar::Error> {
     pulsar
         .reader()
         .with_topic(full_topic_name)
@@ -98,12 +96,13 @@ const RECONNECT_DELAY: usize = 100; // wait 100 ms before trying to reconnect
 const CHECK_CONNECTION_TIMEOUT: usize = 30_000;
 const LOG_FREQUENCY: usize = 10;
 pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
+    let tenant = config.tenant.clone();
     let namespace = config.namespace.clone();
     let topic = config.topic.clone();
     let pulsar = get_pulsar_client(config)
         .await
         .expect("Failed to build pulsar client");
-    let full_topic_name = format!("persistent://public/{}/{}", namespace, &topic);
+    let full_topic_name = format!("persistent://{}/{}/{}", tenant, namespace, &topic);
 
     let mut counter = 0_usize;
     let mut last_position: Option<MessageIdData> = None;
@@ -139,7 +138,7 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
                         let connection_result = reader.get_mut().check_connection().await;
 
                         if let Err(e) = connection_result {
-                            log::error!("Check connection failed, attempting to reconnect... {}", e.to_string());
+                            log::error!("Check connection failed, attempting to reconnect... {}", e);
                         }
                         break 'inner;
                     }
@@ -194,7 +193,7 @@ async fn write_topic(config: PulsarConfig, mut input: Receiver<Vec<u8>>) {
     let mut counter = 0_usize;
     while let Some(message) = input.recv().await {
         producer
-            .send(message)
+            .send_non_blocking(message)
             .await
             .expect("Failed to send message");
 

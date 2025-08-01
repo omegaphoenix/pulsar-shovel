@@ -4,7 +4,13 @@ port = 6651
 tenant = ""
 namespace = ""
 topic = ""
-token = ""
+
+[src_pulsar.oauth]
+client_id = ""
+client_secret = ""
+client_email = ""
+issuer_url = ""
+audience = ""
 
 [dest_pulsar]
 hostname = ""
@@ -13,3 +19,10 @@ tenant = ""
 namespace = ""
 topic = ""
 token = ""
+
+[dest_pulsar.oauth]
+client_id = ""
+client_secret = ""
+client_email = ""
+issuer_url = ""
+audience = ""
