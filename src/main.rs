@@ -97,7 +97,7 @@ async fn get_pulsar_reader(
 const RECONNECT_DELAY: usize = 100; // wait 100 ms before trying to reconnect
 const CHECK_CONNECTION_TIMEOUT: usize = 30_000;
 const LOG_FREQUENCY: usize = 10;
-pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
+pub async fn read_topic(config: PulsarConfig, output: Sender<(u64, Vec<u8>)>) {
     let tenant = config.tenant.clone();
     let namespace = config.namespace.clone();
     let topic = config.topic.clone();
@@ -159,7 +159,8 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
                             }
                             last_position = Some(message_id.clone());
 
-                            if let Err(err) = output.send(msg.payload.data).await {
+                            let event_time = msg.payload.metadata.event_time.unwrap_or(msg.payload.metadata.publish_time);
+                            if let Err(err) = output.send((event_time, msg.payload.data)).await {
                                 log::error!("failed to send to receiver {err}");
                             }
 
@@ -176,7 +177,7 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
 
 const MAX_RETRIES: u32 = 5;
 const INITIAL_BACKOFF_MS: u64 = 100;
-async fn write_topic(await_send: bool, config: PulsarConfig, mut input: Receiver<Vec<u8>>) {
+async fn write_topic(await_send: bool, config: PulsarConfig, mut input: Receiver<(u64, Vec<u8>)>) {
     let namespace = config.namespace.clone();
     let topic = config.topic.clone();
     let pulsar_client = get_pulsar_client(config)
@@ -196,9 +197,12 @@ async fn write_topic(await_send: bool, config: PulsarConfig, mut input: Receiver
 
     let mut counter = 0_usize;
 
-    while let Some(message) = input.recv().await {
+    while let Some((event_time, data)) = input.recv().await {
         let send_future = producer
-            .send_non_blocking(message.clone())
+            .create_message()
+            .with_content(data.clone())
+            .event_time(event_time)
+            .send_non_blocking()
             .await
             .expect("Failed to create send future");
 
@@ -222,7 +226,10 @@ async fn write_topic(await_send: bool, config: PulsarConfig, mut input: Receiver
                 backoff_ms *= 2; // Exponential backoff
 
                 let retry_future = producer
-                    .send_non_blocking(message.clone())
+                    .create_message()
+                    .with_content(data.clone())
+                    .event_time(event_time)
+                    .send_non_blocking()
                     .await
                     .expect("Failed to create send future");
                 result = retry_future.await;
