@@ -40,7 +40,7 @@ pub struct PulsarConfig {
     pub port: u16,
     pub tenant: String,
     pub namespace: String,
-    pub topic: String,
+    pub topics: Vec<String>,
     pub token: Option<String>,
     pub oauth: Option<OAuth>,
 }
@@ -97,10 +97,9 @@ async fn get_pulsar_reader(
 const RECONNECT_DELAY: usize = 100; // wait 100 ms before trying to reconnect
 const CHECK_CONNECTION_TIMEOUT: usize = 30_000;
 const LOG_FREQUENCY: usize = 10;
-pub async fn read_topic(config: PulsarConfig, output: Sender<(u64, Vec<u8>)>) {
+pub async fn read_topic(config: PulsarConfig, topic: String, output: Sender<(u64, Vec<u8>)>) {
     let tenant = config.tenant.clone();
     let namespace = config.namespace.clone();
-    let topic = config.topic.clone();
     let pulsar = get_pulsar_client(config)
         .await
         .expect("Failed to build pulsar client");
@@ -165,8 +164,8 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<(u64, Vec<u8>)>) {
                             }
 
                             counter += 1;
-                            if counter % LOG_FREQUENCY == 0 {
-                                log::info!("{} got {} messages", &topic, counter);
+                            if counter % LOG_FREQUENCY == 1 {
+                                log::info!("{topic} got {counter} messages");
                             }
                         }
                     }
@@ -177,9 +176,13 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<(u64, Vec<u8>)>) {
 
 const MAX_RETRIES: u32 = 5;
 const INITIAL_BACKOFF_MS: u64 = 100;
-async fn write_topic(await_send: bool, config: PulsarConfig, mut input: Receiver<(u64, Vec<u8>)>) {
+async fn write_topic(
+    await_send: bool,
+    config: PulsarConfig,
+    topic: String,
+    mut input: Receiver<(u64, Vec<u8>)>,
+) {
     let namespace = config.namespace.clone();
-    let topic = config.topic.clone();
     let pulsar_client = get_pulsar_client(config)
         .await
         .expect("Failed to build pulsar client");
@@ -253,7 +256,39 @@ async fn main() {
         src_pulsar,
         dest_pulsar,
     } = config::load().expect("Unable to load config");
-    let (tx, rx) = channel(BUFFER_SIZE);
-    tokio::spawn(async move { write_topic(await_send, dest_pulsar, rx).await });
-    read_topic(src_pulsar, tx).await;
+
+    // Ensure both configs have the same topics
+    if src_pulsar.topics.len() != dest_pulsar.topics.len() {
+        panic!("Source and destination must have the same number of topics");
+    }
+
+    let mut handles = vec![];
+
+    // Spawn a read/write pair for each topic
+    for (src_topic, dest_topic) in src_pulsar.topics.iter().zip(dest_pulsar.topics.iter()) {
+        let (tx, rx) = channel(BUFFER_SIZE);
+        let src_config = src_pulsar.clone();
+        let dest_config = dest_pulsar.clone();
+        let src_topic_clone = src_topic.clone();
+        let dest_topic_clone = dest_topic.clone();
+
+        // Spawn writer task
+        let writer_handle = tokio::spawn(async move {
+            write_topic(await_send, dest_config, dest_topic_clone, rx).await
+        });
+
+        // Spawn reader task
+        let reader_handle =
+            tokio::spawn(async move { read_topic(src_config, src_topic_clone, tx).await });
+
+        handles.push((format!("writer for {dest_topic}"), writer_handle));
+        handles.push((format!("reader for {src_topic}"), reader_handle));
+    }
+
+    // Wait for all tasks to complete
+    for (task_description, handle) in handles {
+        if let Err(e) = handle.await {
+            panic!("Task failed - {task_description}: {e}");
+        }
+    }
 }

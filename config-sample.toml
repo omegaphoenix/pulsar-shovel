@@ -5,7 +5,9 @@ hostname = ""
 port = 6651
 tenant = ""
 namespace = ""
-topic = ""
+topics = [
+    ""
+]
 
 [src_pulsar.oauth]
 client_id = ""
@@ -19,7 +21,9 @@ hostname = ""
 port = 6651
 tenant = ""
 namespace = ""
-topic = ""
+topics = [
+    ""
+]
 token = ""
 
 [dest_pulsar.oauth]
