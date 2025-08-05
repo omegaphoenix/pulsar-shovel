@@ -1,4 +1,5 @@
 await_send = true
+is_live = false
 
 [src_pulsar]
 hostname = ""

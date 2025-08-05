@@ -21,6 +21,9 @@ pub async fn delay_ms(ms: usize) {
 pub struct Config {
     /// If true, await the send receipt before sending the next message
     pub await_send: bool,
+    /// If false, exit after the last message is published
+    pub is_live: bool,
+
     pub src_pulsar: PulsarConfig,
     pub dest_pulsar: PulsarConfig,
 }
@@ -97,7 +100,12 @@ async fn get_pulsar_reader(
 const RECONNECT_DELAY: usize = 100; // wait 100 ms before trying to reconnect
 const CHECK_CONNECTION_TIMEOUT: usize = 30_000;
 const LOG_FREQUENCY: usize = 10;
-pub async fn read_topic(config: PulsarConfig, topic: String, output: Sender<(u64, Vec<u8>)>) {
+pub async fn read_topic(
+    config: PulsarConfig,
+    topic: String,
+    is_live: bool,
+    output: Sender<(u64, Vec<u8>)>,
+) {
     let tenant = config.tenant.clone();
     let namespace = config.namespace.clone();
     let pulsar = get_pulsar_client(config)
@@ -107,6 +115,7 @@ pub async fn read_topic(config: PulsarConfig, topic: String, output: Sender<(u64
 
     let mut counter = 0_usize;
     let mut last_position: Option<MessageIdData> = None;
+
     loop {
         let mut reader = match get_pulsar_reader(
             pulsar.clone(),
@@ -130,6 +139,11 @@ pub async fn read_topic(config: PulsarConfig, topic: String, output: Sender<(u64
 
         let check_connection_timer = delay_ms(CHECK_CONNECTION_TIMEOUT).fuse();
         futures::pin_mut!(check_connection_timer);
+        let last_message_id = reader
+            .get_mut()
+            .get_last_message_id()
+            .await
+            .expect("failed to get last message id");
 
         'inner: loop {
             futures::select! {
@@ -149,7 +163,7 @@ pub async fn read_topic(config: PulsarConfig, topic: String, output: Sender<(u64
                             check_connection_timer.set(delay_ms(CHECK_CONNECTION_TIMEOUT).fuse());
 
                             let msg = msg.expect("Failed to read message");
-                            let message_id = msg.message_id();
+                            let message_id = msg.message_id().clone();
 
                             // Necessary to skip repeats due to reconnecting from last position
                             if last_position == Some(message_id.clone()) {
@@ -166,6 +180,11 @@ pub async fn read_topic(config: PulsarConfig, topic: String, output: Sender<(u64
                             counter += 1;
                             if counter % LOG_FREQUENCY == 1 {
                                 log::info!("{topic} got {counter} messages");
+                            }
+
+                            if !is_live && message_id == last_message_id {
+                                log::info!("{topic}: Reached end of topic after {counter} messages");
+                                return;
                             }
                         }
                     }
@@ -253,6 +272,7 @@ async fn main() {
 
     let Config {
         await_send,
+        is_live,
         src_pulsar,
         dest_pulsar,
     } = config::load().expect("Unable to load config");
@@ -279,7 +299,7 @@ async fn main() {
 
         // Spawn reader task
         let reader_handle =
-            tokio::spawn(async move { read_topic(src_config, src_topic_clone, tx).await });
+            tokio::spawn(async move { read_topic(src_config, src_topic_clone, is_live, tx).await });
 
         handles.push((format!("writer for {dest_topic}"), writer_handle));
         handles.push((format!("reader for {src_topic}"), reader_handle));
