@@ -2,16 +2,16 @@ mod config;
 use futures::FutureExt;
 use futures::StreamExt;
 use pulsar::{
+    Authentication as TokenAuthentication, Pulsar, TokioExecutor,
     authentication::oauth2::{OAuth2Authentication, OAuth2Params},
     consumer::{ConsumerOptions, InitialPosition},
     producer::ProducerOptions,
     proto::MessageIdData,
     reader::Reader,
-    Authentication as TokenAuthentication, Pulsar, TokioExecutor,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 pub async fn delay_ms(ms: usize) {
     tokio::time::sleep(Duration::from_millis(ms as u64)).await;
@@ -61,7 +61,7 @@ async fn get_pulsar_client(config: PulsarConfig) -> Result<Pulsar<TokioExecutor>
         builder =
             builder.with_auth_provider(OAuth2Authentication::client_credentials(OAuth2Params {
                 issuer_url: oauth.issuer_url.clone(),
-                credentials_url: format!("data:application/json;,{}", credentials),
+                credentials_url: format!("data:application/json;,{credentials}"),
                 audience: Some(oauth.audience),
                 scope: None,
             }));
@@ -81,7 +81,7 @@ async fn get_pulsar_reader(
         .with_consumer_name("test_reader")
         .with_options(
             if let Some(pos) = initial_position {
-                log::warn!("Reconnecting reader starting from {:?}", pos);
+                log::warn!("Reconnecting reader starting from {pos:?}");
                 ConsumerOptions::default().starting_on_message(pos)
             } else {
                 ConsumerOptions::default().with_initial_position(InitialPosition::Earliest)
@@ -138,7 +138,7 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
                         let connection_result = reader.get_mut().check_connection().await;
 
                         if let Err(e) = connection_result {
-                            log::error!("Check connection failed, attempting to reconnect... {}", e);
+                            log::error!("Check connection failed, attempting to reconnect... {e}");
                         }
                         break 'inner;
                     }
@@ -158,7 +158,7 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
                             last_position = Some(message_id.clone());
 
                             if let Err(err) = output.send(msg.payload.data).await {
-                                log::error!("failed to send to receiver {}", err);
+                                log::error!("failed to send to receiver {err}");
                             }
 
                             counter += 1;
