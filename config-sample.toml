@@ -1,3 +1,5 @@
+await_send = true
+
 [src_pulsar]
 hostname = ""
 port = 6651

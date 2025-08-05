@@ -19,6 +19,8 @@ pub async fn delay_ms(ms: usize) {
 
 #[derive(Clone, Deserialize)]
 pub struct Config {
+    /// If true, await the send receipt before sending the next message
+    pub await_send: bool,
     pub src_pulsar: PulsarConfig,
     pub dest_pulsar: PulsarConfig,
 }
@@ -172,7 +174,9 @@ pub async fn read_topic(config: PulsarConfig, output: Sender<Vec<u8>>) {
     }
 }
 
-async fn write_topic(config: PulsarConfig, mut input: Receiver<Vec<u8>>) {
+const MAX_RETRIES: u32 = 5;
+const INITIAL_BACKOFF_MS: u64 = 100;
+async fn write_topic(await_send: bool, config: PulsarConfig, mut input: Receiver<Vec<u8>>) {
     let namespace = config.namespace.clone();
     let topic = config.topic.clone();
     let pulsar_client = get_pulsar_client(config)
@@ -191,14 +195,42 @@ async fn write_topic(config: PulsarConfig, mut input: Receiver<Vec<u8>>) {
         .expect("Failed to create producer");
 
     let mut counter = 0_usize;
+
     while let Some(message) = input.recv().await {
-        producer
-            .send_non_blocking(message)
+        let send_future = producer
+            .send_non_blocking(message.clone())
             .await
-            .expect("Failed to send message");
+            .expect("Failed to create send future");
+
+        if await_send {
+            let mut retry_count = 0;
+            let mut backoff_ms = INITIAL_BACKOFF_MS;
+            let mut result = send_future.await;
+
+            while let Err(e) = result {
+                retry_count += 1;
+                if retry_count > MAX_RETRIES {
+                    log::error!("Failed to send message after {MAX_RETRIES} retries: {e}");
+                    break;
+                }
+
+                log::warn!(
+                    "Failed to send message (attempt {retry_count}/{MAX_RETRIES}): {e}, retrying in {backoff_ms}ms",
+                );
+
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                backoff_ms *= 2; // Exponential backoff
+
+                let retry_future = producer
+                    .send_non_blocking(message.clone())
+                    .await
+                    .expect("Failed to create send future");
+                result = retry_future.await;
+            }
+        }
 
         counter += 1;
-        if counter % LOG_FREQUENCY == 0 {
+        if counter % LOG_FREQUENCY == 1 {
             log::info!("sent {} messages to {}", counter, &topic);
         }
     }
@@ -210,10 +242,11 @@ async fn main() {
     env_logger::init();
 
     let Config {
+        await_send,
         src_pulsar,
         dest_pulsar,
     } = config::load().expect("Unable to load config");
     let (tx, rx) = channel(BUFFER_SIZE);
-    tokio::spawn(async move { write_topic(dest_pulsar, rx).await });
+    tokio::spawn(async move { write_topic(await_send, dest_pulsar, rx).await });
     read_topic(src_pulsar, tx).await;
 }
