@@ -191,8 +191,6 @@ pub async fn read_topic(
     }
 }
 
-const MAX_RETRIES: u32 = 5;
-const INITIAL_BACKOFF_MS: u64 = 100;
 async fn write_topic(
     await_send: bool,
     config: PulsarConfig,
@@ -232,33 +230,13 @@ async fn write_topic(
             .expect("Failed to create send future");
 
         if await_send {
-            let mut retry_count = 0;
-            let mut backoff_ms = INITIAL_BACKOFF_MS;
-            let mut result = send_future.await;
-
-            while let Err(e) = result {
-                retry_count += 1;
-                if retry_count > MAX_RETRIES {
-                    log::error!("Failed to send message after {MAX_RETRIES} retries: {e}");
-                    break;
+            // Throttle to avoid overwhelming the destination cluster
+            delay_ms(10).await;
+            tokio::spawn(async move {
+                if let Err(e) = send_future.await {
+                    log::error!("Batched message send failed on message {counter}: {e}");
                 }
-
-                log::warn!(
-                    "Failed to send message (attempt {retry_count}/{MAX_RETRIES}): {e}, retrying in {backoff_ms}ms",
-                );
-
-                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-                backoff_ms *= 2; // Exponential backoff
-
-                let retry_future = producer
-                    .create_message()
-                    .with_content(data.clone())
-                    .event_time(event_time)
-                    .send_non_blocking()
-                    .await
-                    .expect("Failed to create send future");
-                result = retry_future.await;
-            }
+            });
         }
 
         counter += 1;
@@ -279,7 +257,7 @@ async fn write_topic(
     }
 }
 
-const BUFFER_SIZE: usize = 1000;
+const BUFFER_SIZE: usize = 100;
 #[tokio::main]
 async fn main() {
     env_logger::init();
