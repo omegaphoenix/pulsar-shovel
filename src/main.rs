@@ -3,6 +3,8 @@ mod retention;
 mod types;
 use futures::FutureExt;
 use futures::StreamExt;
+use pulsar::compression::Compression;
+use pulsar::compression::CompressionZstd;
 use pulsar::{
     Authentication as TokenAuthentication, Pulsar, TokioExecutor,
     authentication::oauth2::{OAuth2Authentication, OAuth2Params},
@@ -209,7 +211,10 @@ async fn write_topic(
         .producer()
         .with_topic(full_topic_name)
         .with_name("test_producer")
-        .with_options(ProducerOptions::default())
+        .with_options(ProducerOptions {
+            compression: Some(Compression::Zstd(CompressionZstd { level: 6 })),
+            ..Default::default()
+        })
         .build()
         .await
         .expect("Failed to create producer");
