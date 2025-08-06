@@ -1,4 +1,6 @@
 mod config;
+mod retention;
+mod types;
 use futures::FutureExt;
 use futures::StreamExt;
 use pulsar::{
@@ -9,9 +11,10 @@ use pulsar::{
     proto::MessageIdData,
     reader::Reader,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
+use types::PulsarConfig;
 
 pub async fn delay_ms(ms: usize) {
     tokio::time::sleep(Duration::from_millis(ms as u64)).await;
@@ -35,26 +38,6 @@ pub struct Config {
 
     pub src_pulsar: PulsarConfig,
     pub dest_pulsar: PulsarConfig,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct OAuth {
-    pub client_id: String,
-    pub client_secret: String,
-    pub client_email: String,
-    pub issuer_url: String,
-    pub audience: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct PulsarConfig {
-    pub hostname: String,
-    pub port: u16,
-    pub tenant: String,
-    pub namespace: String,
-    pub topics: Vec<String>,
-    pub token: Option<String>,
-    pub oauth: Option<OAuth>,
 }
 
 async fn get_pulsar_client(config: PulsarConfig) -> Result<Pulsar<TokioExecutor>, pulsar::Error> {
@@ -305,6 +288,10 @@ async fn main() {
         let dest_config = dest_pulsar.clone();
         let src_topic_clone = src_topic.clone();
         let dest_topic_clone = dest_topic.clone();
+
+        retention::retain_topic(dest_config.clone(), dest_topic)
+            .await
+            .expect("Failed to retain topic");
 
         // Spawn writer task
         let writer_handle = tokio::spawn(async move {
