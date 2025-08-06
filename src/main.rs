@@ -215,6 +215,7 @@ async fn write_topic(
         .expect("Failed to create producer");
 
     let mut counter = 0_usize;
+    let mut retention_set = false;
 
     while let Some((event_time, data)) = input.recv().await {
         let send_future = producer
@@ -256,6 +257,17 @@ async fn write_topic(
         }
 
         counter += 1;
+
+        // Set retention policy after first successful message
+        if !retention_set {
+            if let Err(err) = retention::retain_topic(config.clone(), &topic).await {
+                log::warn!("Failed to set retention policy for {}: {}", topic, err);
+            } else {
+                log::info!("Retention policy set for topic: {}", topic);
+            }
+            retention_set = true;
+        }
+
         if counter % LOG_FREQUENCY == 1 {
             log::info!("sent {} messages to {}", counter, &topic);
         }
@@ -288,10 +300,6 @@ async fn main() {
         let dest_config = dest_pulsar.clone();
         let src_topic_clone = src_topic.clone();
         let dest_topic_clone = dest_topic.clone();
-
-        retention::retain_topic(dest_config.clone(), dest_topic)
-            .await
-            .expect("Failed to retain topic");
 
         // Spawn writer task
         let writer_handle = tokio::spawn(async move {
