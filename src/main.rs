@@ -17,6 +17,15 @@ pub async fn delay_ms(ms: usize) {
     tokio::time::sleep(Duration::from_millis(ms as u64)).await;
 }
 
+/// Check if we've reached the end of the topic by comparing the essential message position fields
+/// Ignores batch_index differences which can vary between current and last message IDs
+fn is_at_end_of_topic(current_id: &MessageIdData, last_id: &MessageIdData) -> bool {
+    // Compare the core position identifiers that matter for topic end detection
+    current_id.ledger_id == last_id.ledger_id
+        && current_id.entry_id == last_id.entry_id
+        && current_id.partition == last_id.partition
+}
+
 #[derive(Clone, Deserialize)]
 pub struct Config {
     /// If true, await the send receipt before sending the next message
@@ -99,7 +108,7 @@ async fn get_pulsar_reader(
 
 const RECONNECT_DELAY: usize = 100; // wait 100 ms before trying to reconnect
 const CHECK_CONNECTION_TIMEOUT: usize = 30_000;
-const LOG_FREQUENCY: usize = 10;
+const LOG_FREQUENCY: usize = 100;
 pub async fn read_topic(
     config: PulsarConfig,
     topic: String,
@@ -150,6 +159,14 @@ pub async fn read_topic(
                     // This is necessary due to a bug in our Pulsar broker
                     // When the broker recovers the offloaded data from s3, it sometimes fails and hangs
                     _ = check_connection_timer => {
+                        if let Some(ref message_id) = last_position {
+                            if !is_live && is_at_end_of_topic(message_id, &last_message_id) {
+                                log::info!("{topic}: Reached end of topic after {counter} messages");
+                                return;
+                            }
+                        }
+
+
                         let connection_result = reader.get_mut().check_connection().await;
 
                         if let Err(e) = connection_result {
@@ -182,10 +199,6 @@ pub async fn read_topic(
                                 log::info!("{topic} got {counter} messages");
                             }
 
-                            if !is_live && message_id == last_message_id {
-                                log::info!("{topic}: Reached end of topic after {counter} messages");
-                                return;
-                            }
                         }
                     }
             }
