@@ -214,12 +214,13 @@ async fn write_topic(
     topic: String,
     mut input: Receiver<(u64, Vec<u8>)>,
 ) {
+    let tenant = config.tenant.clone();
     let namespace = config.namespace.clone();
-    let pulsar_client = get_pulsar_client(config)
+    let pulsar_client = get_pulsar_client(config.clone())
         .await
         .expect("Failed to build pulsar client");
 
-    let full_topic_name = format!("persistent://public/{}/{}", namespace, &topic);
+    let full_topic_name = format!("persistent://{}/{}/{}", tenant, namespace, &topic);
 
     let mut producer = pulsar_client
         .producer()
