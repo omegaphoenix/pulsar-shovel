@@ -1,6 +1,6 @@
-mod config;
+pub mod config;
 mod retention;
-mod types;
+pub mod types;
 use futures::FutureExt;
 use futures::StreamExt;
 use pulsar::compression::Compression;
