@@ -7,3 +7,7 @@ This script is for copying data from one Pulsar host/namespace/topic to another.
 `cp config-sample.toml config.toml`
 2. Fill out config.toml with hostname, tenant, namespace, topic, and tokens.
 3. `RUST_LOG=info cargo run --release`
+
+
+## To validate after shoveling
+1. Run `cargo run --bin verify_migration --release`
