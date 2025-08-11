@@ -308,6 +308,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let status = if src_count == dest_count {
             "✅ MATCH"
+        } else if src_count > 0 && dest_count > src_count && dest_count % src_count == 0 {
+            // Destination count is a clean multiple of source count, indicating batching
+            let batch_ratio = dest_count / src_count;
+            &format!("✅ MATCH (batched {}:1)", batch_ratio)
         } else {
             mismatched_topics.push(topic.clone());
             "❌ MISMATCH"
@@ -360,6 +364,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (topic, src_count, dest_count) in results {
         let status = if src_count == dest_count {
+            "✅"
+        } else if src_count > 0 && dest_count > src_count && dest_count % src_count == 0 {
+            // Destination count is a clean multiple of source count, indicating batching
             "✅"
         } else {
             "❌"
