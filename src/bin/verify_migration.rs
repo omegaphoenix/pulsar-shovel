@@ -283,6 +283,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Get destination message count using REST API
+        let dest_topic = config.dest_pulsar.topics.get(i).unwrap_or(topic);
         let dest_count = match get_topic_message_count(
             &config.dest_pulsar.hostname,
             config
@@ -292,7 +293,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .ok_or("Destination OAuth not configured")?,
             &config.dest_pulsar.tenant,
             &config.dest_pulsar.namespace,
-            topic,
+            dest_topic,
         )
         .await
         {
